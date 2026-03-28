@@ -10,6 +10,7 @@ import TripWizard from './components/TripWizard';
 import MyTrips from './pages/MyTrips';
 import TripDetails from './pages/TripDetails'; // <--- NEW IMPORT
 import { useAuth } from './context/AuthContext';
+import WeatherPage from './pages/WeatherPage';
 
 // --- HOME COMPONENT ---
 const Home = () => {
@@ -123,6 +124,7 @@ export default function App() {
         <Routes>
           <Route path="/auth" element={!user ? <Auth /> : <Navigate to="/" />} />
           <Route path="/" element={user ? <Home /> : <Navigate to="/auth" />} />
+          <Route path="/weather" element={<WeatherPage />} />
           <Route path="/my-trips" element={user ? <MyTrips /> : <Navigate to="/auth" />} />
           {/* NEW ROUTE ADDED HERE */}
           <Route path="/trip/:id" element={user ? <TripDetails /> : <Navigate to="/auth" />} />

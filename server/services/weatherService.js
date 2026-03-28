@@ -1,4 +1,3 @@
-// @desc Handles the external OpenWeather API calls
 const fetchWeatherFromAPI = async (city) => {
     const apiKey = process.env.OPENWEATHER_API_KEY;
     
@@ -26,12 +25,16 @@ const fetchWeatherFromAPI = async (city) => {
             humidity: currentData.main.humidity,
             wind_speed: currentData.wind.speed
         },
-        forecast: forecastData.list.map(item => ({
-            datetime: item.dt_txt,
-            temp: item.main.temp,
-            description: item.weather[0].description,
-            icon: item.weather[0].icon
-        })),
+        // Fix: Ensure 'item' is strictly scoped inside this map
+        forecast: forecastData.list.map((item) => {
+            return {
+                datetime: item.dt_txt,
+                temp: item.main.temp,
+                description: item.weather[0].description,
+                icon: item.weather[0].icon,
+                rain_chance: Math.round((item.pop || 0) * 100) // Added rain chance safety check
+            };
+        }),
         city_info: {
             name: forecastData.city.name,
             country: forecastData.city.country

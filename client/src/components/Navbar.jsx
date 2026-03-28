@@ -1,4 +1,4 @@
-import { Plane, User, LogOut, Map, Calendar } from 'lucide-react';
+import { Plane, User, LogOut, Map, Calendar, CloudSun } from 'lucide-react'; // Added CloudSun
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { motion } from 'framer-motion';
@@ -13,7 +13,6 @@ const Navbar = () => {
   };
 
   return (
-    // z-50 ensures the navbar stays ABOVE the AI generated content and the background blurs
     <nav className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/80 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
@@ -31,12 +30,19 @@ const Navbar = () => {
             </span>
           </Link>
 
-          {/* Navigation Links - Centered for balance */}
+          {/* Navigation Links - Balanced with Weather integrated */}
           <div className="hidden md:flex items-center gap-8">
             <Link to="/" className="flex items-center gap-1.5 text-sm font-semibold text-brand-muted hover:text-brand-accent transition-all">
               <Map className="w-4 h-4" />
               Plan Trip
             </Link>
+
+            {/* NEW: Weather Link */}
+            <Link to="/weather" className="flex items-center gap-1.5 text-sm font-semibold text-brand-muted hover:text-brand-accent transition-all">
+              <CloudSun className="w-4 h-4" />
+              Weather
+            </Link>
+
             <Link to="/my-trips" className="flex items-center gap-1.5 text-sm font-semibold text-brand-muted hover:text-brand-accent transition-all">
               <Calendar className="w-4 h-4" />
               My Journeys
@@ -46,8 +52,7 @@ const Navbar = () => {
           {/* User Profile / Logout */}
           <div className="flex items-center gap-4 border-l pl-6 border-slate-200">
             <div className="flex flex-col items-end hidden sm:flex">
-              {/* Fallback to 'Explorer' if name is missing */}
-              <span className="text-xs font-bold text-brand-dark">{user?.name || 'User'}</span>
+              <span className="text-xs font-bold text-brand-dark">{user?.name || 'Explorer'}</span>
               <span className="text-[10px] text-brand-muted uppercase tracking-widest font-medium">Premium Member</span>
             </div>
             
