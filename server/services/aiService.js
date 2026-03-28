@@ -1,78 +1,65 @@
 const Groq = require('groq-sdk');
-
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-const generateTripItinerary = async (destination, startDate, endDate, budget) => {
-    
-    // 1. RAG STEP: Retrieve Real-Time Weather Context
-    let weatherContext = "Rely on historical seasonal weather for this time of year.";
+// 1. STABLE RETRIEVAL: Fetch current weather for the city
+const fetchLiveWeather = async (destination) => {
     try {
-        console.log(`🌤️ Fetching weather context for ${destination}...`);
-        const weatherUrl = `https://api.openweathermap.org/data/2.5/forecast?q=${destination}&units=metric&appid=${process.env.OPENWEATHER_API_KEY}`;
-        const response = await fetch(weatherUrl);
-        
-        if (response.ok) {
-            const weatherData = await response.json();
-            // Grab a summary of the next few days (temp and conditions)
-            const forecasts = weatherData.list.slice(0, 10).map(w => 
-                `${w.dt_txt.split(' ')[0]}: ${w.weather[0].description}, ${w.main.temp}°C`
-            ).join(' | ');
-            
-            weatherContext = `Here is the real-time forecast for the upcoming days: ${forecasts}. 
-            CRITICAL INSTRUCTION: If the user's trip dates fall within this forecast, you MUST plan outdoor activities on clear/sunny days and indoor activities on rainy/stormy days. If the trip is months in the future, ignore this forecast and use general seasonal averages.`;
+        const apiKey = process.env.OPENWEATHER_API_KEY;
+        if (!apiKey) return "Live weather currently unavailable.";
+
+        const response = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${destination}&units=metric&appid=${apiKey}`);
+        const data = await response.json();
+
+        if (data.weather && data.weather.length > 0) {
+            return `Condition: ${data.weather[0].description}. Temperature: ${data.main.temp}°C.`;
         }
+        return "Typical seasonal weather.";
     } catch (error) {
-        console.error("DETAILED GROQ ERROR:", error.response?.data || error.message || error);
-    throw new Error("Failed to generate trip with AI");
+        console.error("Weather Retrieval Error:", error.message);
+        return "Typical seasonal weather."; 
     }
+};
 
-    // 2. The Strict System Prompt (Data Contract)
-    const systemPrompt = `You are a professional, expert travel planner. You MUST output ONLY valid JSON. Do not include any markdown styling, conversational text, or introductions. 
-    
-    You must strictly adhere to this exact JSON structure:
-    {
-      "destination": "${destination}",
-      "start_date": "${startDate}",
-      "end_date": "${endDate}",
-      "estimated_budget_level": "${budget}",
-      "weather_and_packing_suggestion": "Specific advice based on the dates and weather.",
-      "itinerary": [
-        {
-          "date": "YYYY-MM-DD",
-          "theme": "Theme for the day",
-          "expected_weather": "Short guess of weather for this specific day",
-          "activities": [
-            {
-              "time": "Morning",
-              "place": "Name of place",
-              "description": "Brief description of why to go here",
-              "estimated_cost": "Cost in USD"
-            }
-          ]
-        }
-      ]
-    }`;
-
-    const userPrompt = `Plan a highly optimized trip to ${destination} from ${startDate} to ${endDate} on a ${budget} budget. 
-    ${weatherContext}`;
-
-    // 3. The API Call to Groq
+// 2. STABLE GENERATION: Standard Itinerary Structure
+const generateTripItinerary = async (destination, startDate, endDate, budget) => {
     try {
+        const liveWeatherContext = await fetchLiveWeather(destination);
+        console.log(`[RAG Pipeline] Weather injected for ${destination}: ${liveWeatherContext}`);
+
+        const prompt = `You are a professional travel planner. 
+        Plan a ${budget} trip to ${destination} from ${startDate} to ${endDate}. 
+        
+        CRITICAL CONTEXT: The live weather forecast for this destination is: "${liveWeatherContext}".
+        You MUST adapt the activities to this weather (e.g., if it is raining, heavily prioritize indoor museums, cafes, and covered markets).
+        Write a specific packing suggestion based on this exact weather.
+
+        Return ONLY a JSON object with this exact structure: 
+        { 
+          "destination": "${destination}", 
+          "weather_and_packing_suggestion": "string", 
+          "itinerary": [
+            { 
+              "day": 1, 
+              "theme": "string", 
+              "date": "YYYY-MM-DD",
+              "activities": [
+                { "time": "morning", "place": "string", "description": "string", "estimated_cost": "string" }
+              ] 
+            }
+          ] 
+        }`;
+
         const chatCompletion = await groq.chat.completions.create({
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userPrompt }
-            ],
-            model: 'llama-3.1-8b-instant', 
-            temperature: 0.7,
-            response_format: { type: 'json_object' } 
+            messages: [{ role: 'user', content: prompt }],
+            model: 'llama-3.1-8b-instant',
+            response_format: { type: "json_object" }
         });
 
-        const aiResponseString = chatCompletion.choices[0].message.content;
-        return JSON.parse(aiResponseString);
+        const aiContent = chatCompletion.choices[0].message.content;
+        return JSON.parse(aiContent);
 
     } catch (error) {
-        console.error("Groq API Error:", error);
+        console.error("GROQ API ERROR:", error.message);
         throw new Error("Failed to generate trip with AI");
     }
 };

@@ -35,8 +35,21 @@ const TripWizard = () => {
                 throw new Error("Invalid AI Response Format");
             }
         } catch (err) {
-            console.error("Generation Error:", err);
-            alert("Failed to generate trip. The AI might be overloaded. Try again!");
+            // 1. Let's log exactly what the backend sent us to the console
+            console.error("Status Code:", err.response?.status);
+            console.error("Backend Data:", err.response?.data);
+            
+            // 2. Safely check for the 429 Rate Limit error
+            if (err.response?.status === 429) {
+                // Sometimes express-rate-limit nests the message, sometimes it doesn't. 
+                // This checks both places, and has a final fallback string just in case!
+                const warningMessage = err.response?.data?.message || err.response?.data || "Rate limit reached. Please wait 15 minutes.";
+                alert(warningMessage); 
+            } 
+            // 3. The standard fallback error for anything else (like a 500 server crash)
+            else {
+                alert("Failed to generate trip. The AI might be overloaded. Try again!");
+            }
         } finally {
             setLoading(false);
         }

@@ -1,9 +1,8 @@
 const db = require('../config/db');
+const redisClient = require('../config/redis'); // Added this import
 const { generateTripItinerary } = require('../services/aiService');
 const { tripRequestSchema } = require('../utils/validators');
 
-// @desc    Generate a new trip via AI and save to DB
-// @route   POST /api/trips/generate
 // @desc    Get all trips for logged in user
 const getMyTrips = async (req, res) => {
     try {
@@ -18,10 +17,10 @@ const getMyTrips = async (req, res) => {
     }
 };
 
-
+// @desc    Generate a new trip via AI (with Redis Caching) and save to DB
 const generateAndSaveTrip = async (req, res) => {
     try {
-        // 1. Zod Validation (This replaces all manual if-checks)
+        // 1. Zod Validation
         const validation = tripRequestSchema.safeParse(req.body);
         
         if (!validation.success) {
@@ -33,13 +32,44 @@ const generateAndSaveTrip = async (req, res) => {
         
         // 2. Destructure the clean, validated data
         const { destination, startDate, endDate, budget } = validation.data;
-        const userId = req.user.id; // From authMiddleware
+        const userId = req.user.id; 
+
+        // --- NEW CACHE LOGIC ---
+        const cacheKey = `trip:${destination.toLowerCase()}:${startDate}:${endDate}:${budget.toLowerCase()}`;
         
-        // 3. Call AI Service (RAG Pipeline)
+        // Check if this exact trip already exists in Redis
+        const cachedTrip = await redisClient.get(cacheKey);
+        
+        if (cachedTrip) {
+            console.log(`⚡ [Redis Cache] Hit for ${destination}! Serving instantly.`);
+            const generatedTripData = JSON.parse(cachedTrip);
+
+            // Even if cached, we save to Postgres so it shows in the user's 'My Trips'
+            const insertQuery = `
+                INSERT INTO trips (user_id, destination, start_date, end_date, budget_level, trip_data) 
+                VALUES ($1, $2, $3, $4, $5, $6) 
+                RETURNING *;
+            `;
+            const newTrip = await db.query(insertQuery, [
+                userId, destination, startDate, endDate, budget, JSON.stringify(generatedTripData)
+            ]);
+
+            return res.status(200).json({
+                success: true,
+                message: 'Trip served from cache',
+                trip: newTrip.rows[0]
+            });
+        }
+        // --- END CACHE LOGIC ---
+
+        // 3. Call AI Service (If not in cache)
         console.log(`🤖 Generating trip to ${destination} from ${startDate} to ${endDate}...`);
         const generatedTripData = await generateTripItinerary(destination, startDate, endDate, budget);
         
-        // 4. Save to Neon PostgreSQL
+        // 4. Save to Redis (Cache it for 24 hours / 86400 seconds)
+        await redisClient.setEx(cacheKey, 86400, JSON.stringify(generatedTripData));
+
+        // 5. Save to Neon PostgreSQL
         const insertQuery = `
             INSERT INTO trips (user_id, destination, start_date, end_date, budget_level, trip_data) 
             VALUES ($1, $2, $3, $4, $5, $6) 
@@ -57,7 +87,6 @@ const generateAndSaveTrip = async (req, res) => {
         
         console.log('✅ Trip successfully generated and saved to database');
         
-        // 5. Final Response
         res.status(201).json({
             success: true,
             message: 'Trip generated successfully',
@@ -70,4 +99,4 @@ const generateAndSaveTrip = async (req, res) => {
     }
 };
 
-module.exports = { generateAndSaveTrip, getMyTrips }; // Update your exports!
+module.exports = { generateAndSaveTrip, getMyTrips };
